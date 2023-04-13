@@ -1,0 +1,58 @@
+install miniconda, my version  Conda 23.1.0 Python 3.10.9 released February 7, 2023 64bit - d4517212c8ac44fd8b5ccc2d4d9f38c2dd924c77a81c2be92c3a72e70dd3e907
+install anaconda 
+conda create --name {ENV_NAME}
+conda activate {ENV_NAME}
+promt "proceed": y
+git clone https://github.com/ultralytics/yolov5, last commit for my time: 3e55763d45f9c5f8217e4dad5ba1e6c1f42e3bf8
+pip install -U -r yolov5/requirements.txt
+
+error	
+	UnicodeDecodeError: 'charmap' codec can't decode byte 0x98 in position 1125: character maps to <undefined>
+	https://anaconda.org/conda-forge/r-utf8
+	PYTHONIOENCODING=utf-8 in bash
+
+python
+
+		import torch
+		print(torch.cuda.is_available())
+
+false
+	find nvidia-smi location
+	run C:\Windows\System32\nvidia-smi.exe (create shortcut if you want)
+	find CUDA version
+	find apliable pytroch here https://pytorch.org/get-started/previous-versions/
+
+i have cuda 12, instal cuda 11.7 
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia from here: https://pytorch.org/get-started/locally/#supported-windows-distributions 
+pip install torch==1.12.1+cu116 torchvision==0.13.1+cu116 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu116
+1.12.1+cu113 - working 
+
+
+curl -L "https://app.roboflow.com/ds/key" > roboflow.zip;  or C:\Windows\System32\curl.exe -L  "https://app.roboflow.com/ds/key" > roboflow.zip
+unzip roboflow.zip; rm roboflow.zip - linux
+
+
+own pc:
+	C:\Users\FattakhovNI\yolov5\models
+	copy of yolov5s
+	change nc to nc form command type data.yaml
+	rename your file as disired
+or:	copy yolov5s.yaml tsd_yolov5s.yaml
+	change nc to nc form command type data.yaml
+
+jupiter !python train --epoch 70 --batch-size 16 --data data.yaml --img 640 --cfg models/tfsd_uolov5s.yaml
+own pc: train.py --epoch 70 --batch-size 16 --data ../data.yaml --img 640 --cfg models/tsd_yolov5s.yaml
+
+
+detect.py --weights runs/train/exp4/weights/best.pt --conf 0.1 --source 640_640.jpg
+or
+detect.py --weights runs/train/exp4/weights/best.pt --conf 0.1 --source ../
+
+here i used colab, because tensorflow weigth is to big, but it prebuilt in colab
+export.py --weights runs/train/exp4/weights/best.pt --simplify --topk-all 100 --iou-thres 0.65 --conf 0.2 --img-size 640 640 --include tflite
+
+
+https://github.com/akhilkailas2001/Object-Detection-using-Yolov5
+F:\asnroid-tf\TFLite-Object-Detection-Android-App-YOLOv5-main
+
+https://github.com/VladYatsenko/car-assistant-android/tree/master/app/src/main/assets
