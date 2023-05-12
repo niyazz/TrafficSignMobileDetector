@@ -50,12 +50,7 @@ public class MainActivity extends AppCompatActivity {
 
             new Thread(() -> {
                 final List<Classifier.Recognition> results = detector.recognizeImage(cropBitmap);
-                handler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        handleResult(cropBitmap, results);
-                    }
-                });
+                handler.post(() -> handleResult(cropBitmap, results));
             }).start();
 
         });

@@ -194,13 +194,8 @@ public class MultiBoxTracker {
       trackedRecognition.detectionConfidence = potential.first;
       trackedRecognition.location = new RectF(potential.second.getLocation());
       trackedRecognition.title = potential.second.getTitle();
-//      trackedRecognition.color = COLORS[trackedObjects.size() % COLORS.length];
       trackedRecognition.color = COLORS[potential.second.getDetectedClass() % COLORS.length];
       trackedObjects.add(trackedRecognition);
-
-//      if (trackedObjects.size() >= COLORS.length) {
-//        break;
-//      }
     }
   }
 
