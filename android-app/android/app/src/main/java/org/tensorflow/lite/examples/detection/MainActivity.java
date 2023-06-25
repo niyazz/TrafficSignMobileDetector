@@ -114,7 +114,7 @@ public class MainActivity extends AppCompatActivity {
         tracker = new MultiBoxTracker(this);
         trackingOverlay = findViewById(R.id.tracking_overlay);
         trackingOverlay.addCallback(
-                canvas -> tracker.draw(canvas));
+                canvas -> tracker.draw(canvas, null));
 
         tracker.setFrameConfiguration(TF_OD_API_INPUT_SIZE, TF_OD_API_INPUT_SIZE, sensorOrientation);
 

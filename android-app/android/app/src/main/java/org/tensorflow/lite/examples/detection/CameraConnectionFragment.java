@@ -238,7 +238,7 @@ public class CameraConnectionFragment extends Fragment {
 
     // Pick the smallest of those, assuming we found any
     if (bigEnough.size() > 0) {
-      final Size chosenSize = Collections.min(bigEnough, new CompareSizesByArea());
+      final Size chosenSize = new Size(1920, 960);//Collections.min(bigEnough, new CompareSizesByArea());
       LOGGER.i("Chosen size: " + chosenSize.getWidth() + "x" + chosenSize.getHeight());
       return chosenSize;
     } else {
@@ -252,6 +252,7 @@ public class CameraConnectionFragment extends Fragment {
       final OnImageAvailableListener imageListener,
       final int layout,
       final Size inputSize) {
+    LOGGER.i("======================" + inputSize.getHeight() + " " + inputSize.getWidth());
     return new CameraConnectionFragment(callback, imageListener, layout, inputSize);
   }
 

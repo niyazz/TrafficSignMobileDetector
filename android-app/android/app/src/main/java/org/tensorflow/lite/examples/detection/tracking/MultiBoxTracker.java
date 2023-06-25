@@ -24,12 +24,18 @@ import android.graphics.Paint.Cap;
 import android.graphics.Paint.Join;
 import android.graphics.Paint.Style;
 import android.graphics.RectF;
+import android.os.Build;
+import android.speech.tts.TextToSpeech;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.util.TypedValue;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
+
 import org.tensorflow.lite.examples.detection.env.BorderedText;
 import org.tensorflow.lite.examples.detection.env.ImageUtils;
 import org.tensorflow.lite.examples.detection.env.Logger;
@@ -68,14 +74,14 @@ public class MultiBoxTracker {
   private int frameHeight;
   private int sensorOrientation;
 
+  private HashMap<String, LocalDateTime> recognized;
+
   public MultiBoxTracker(final Context context) {
     for (final int color : COLORS) {
       availableColors.add(color);
     }
-
-    boxPaint.setColor(Color.RED);
     boxPaint.setStyle(Style.STROKE);
-    boxPaint.setStrokeWidth(10.0f);
+    boxPaint.setStrokeWidth(5.0f);
     boxPaint.setStrokeCap(Cap.ROUND);
     boxPaint.setStrokeJoin(Join.ROUND);
     boxPaint.setStrokeMiter(100);
@@ -84,6 +90,7 @@ public class MultiBoxTracker {
             TypedValue.applyDimension(
                     TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, context.getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
+    recognized = new HashMap<>();
   }
 
   public synchronized void setFrameConfiguration(
@@ -93,26 +100,7 @@ public class MultiBoxTracker {
     this.sensorOrientation = sensorOrientation;
   }
 
-  public synchronized void drawDebug(final Canvas canvas) {
-    final Paint textPaint = new Paint();
-    textPaint.setColor(Color.WHITE);
-    textPaint.setTextSize(60.0f);
-
-    final Paint boxPaint = new Paint();
-    boxPaint.setColor(Color.RED);
-    boxPaint.setAlpha(200);
-    boxPaint.setStyle(Style.STROKE);
-
-    for (final Pair<Float, RectF> detection : screenRects) {
-      final RectF rect = detection.second;
-      canvas.drawRect(rect, boxPaint);
-      canvas.drawText("" + detection.first, rect.left, rect.top, textPaint);
-      borderedText.drawText(canvas, rect.centerX(), rect.centerY(), "" + detection.first);
-    }
-  }
-
-  public synchronized void trackResults(final List<Recognition> results, final long timestamp) {
-    logger.i("Processing %d results from %d", results.size(), timestamp);
+  public synchronized void trackResults(final List<Recognition> results) {
     processResults(results);
   }
 
@@ -120,7 +108,7 @@ public class MultiBoxTracker {
     return frameToCanvasMatrix;
   }
 
-  public synchronized void draw(final Canvas canvas) {
+  public synchronized void draw(final Canvas canvas, final TextToSpeech tts) {
     final boolean rotated = sensorOrientation % 180 == 90;
     final float multiplier =
             Math.min(
@@ -143,21 +131,60 @@ public class MultiBoxTracker {
       float cornerSize = Math.min(trackedPos.width(), trackedPos.height()) / 8.0f;
       canvas.drawRoundRect(trackedPos, cornerSize, cornerSize, boxPaint);
 
-      final String labelString =
-              !TextUtils.isEmpty(recognition.title)
-                         // ? String.format("%s %.2f", recognition.title, (100 * recognition.detectionConfidence))
-                    //  : String.format("%.2f", (100 * recognition.detectionConfidence));
-       ? String.format("%s", recognition.title) : String.format("%.2f%", (100 * recognition.detectionConfidence));
-      //            borderedText.drawText(canvas, trackedPos.left + cornerSize, trackedPos.top,
-      // labelString);
-      borderedText.drawText(
-              canvas, trackedPos.left + cornerSize, trackedPos.top, labelString, boxPaint);
+      float confidence = 100 * recognition.detectionConfidence;
+      final String labelString = !TextUtils.isEmpty(recognition.title)
+              ? recognition.title /* " " + confidence*/
+              : String.format("%.2f%", (100 * recognition.detectionConfidence)) ;
+
+      if(recognized.containsKey(recognition.title)){
+        LocalDateTime currentTime = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          currentTime = LocalDateTime.now();
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          Duration duration = Duration.between(recognized.get(recognition.title), currentTime);
+          if(duration.getSeconds() > 15){
+            recognized.remove(recognition.title);
+          }
+        }
+      }else{
+        tts.speak(getTextSpeech(recognition.title), TextToSpeech.QUEUE_FLUSH, null, null);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          recognized.put(recognition.title, LocalDateTime.now());
+        }
+      }
+      borderedText.drawText(canvas, trackedPos.left + cornerSize, trackedPos.top, labelString, boxPaint);
+    }
+  }
+
+  private String getTextSpeech(String classType){
+    switch (classType.trim()){
+      case "1_20":
+      case "1_20_1":
+      case "1_20_2":
+      case "1_20_3":
+        return "Сужение дороги";
+      case "1_25":
+        return "Дорожные работы";
+      case "2_6":
+        return "Приоритет встречного движения";
+      case "1_15":
+        return "Скользкая дорога";
+      case "1_16":
+        return "Неровная дорога";
+      case "3_20":
+        return "Обгон запрещен";
+      case "1_8":
+        return "Светофорное регулирование";
+      case "1_33":
+        return "Прочие опасности";
+      default:
+        return "Неизвестно";
     }
   }
 
   private void processResults(final List<Recognition> results) {
     final List<Pair<Float, Recognition>> rectsToTrack = new LinkedList<Pair<Float, Recognition>>();
-
     screenRects.clear();
     final Matrix rgbFrameToScreen = new Matrix(getFrameToCanvasMatrix());
 
@@ -166,26 +193,19 @@ public class MultiBoxTracker {
         continue;
       }
       final RectF detectionFrameRect = new RectF(result.getLocation());
-
       final RectF detectionScreenRect = new RectF();
       rgbFrameToScreen.mapRect(detectionScreenRect, detectionFrameRect);
-
-      logger.v(
-              "Result! Frame: " + result.getLocation() + " mapped to screen:" + detectionScreenRect);
-
-      screenRects.add(new Pair<Float, RectF>(result.getConfidence(), detectionScreenRect));
+      screenRects.add(new Pair<>(result.getConfidence(), detectionScreenRect));
 
       if (detectionFrameRect.width() < MIN_SIZE || detectionFrameRect.height() < MIN_SIZE) {
-        logger.w("Degenerate rectangle! " + detectionFrameRect);
         continue;
       }
 
-      rectsToTrack.add(new Pair<Float, Recognition>(result.getConfidence(), result));
+      rectsToTrack.add(new Pair<>(result.getConfidence(), result));
     }
 
     trackedObjects.clear();
     if (rectsToTrack.isEmpty()) {
-      logger.v("Nothing to track, aborting.");
       return;
     }
 

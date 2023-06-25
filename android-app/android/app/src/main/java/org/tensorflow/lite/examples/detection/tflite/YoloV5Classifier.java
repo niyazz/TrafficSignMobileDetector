@@ -19,6 +19,7 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Build;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
 
 import org.tensorflow.lite.Interpreter;

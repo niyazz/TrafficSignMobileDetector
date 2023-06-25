@@ -15,23 +15,47 @@
 -->
 
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#00000000">
-    <RelativeLayout
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="#4569af">
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@android:color/black"
-        android:orientation="horizontal">
-        <FrameLayout
-            android:id="@+id/container"
+        android:layout_gravity="end"
+        android:orientation="vertical">
+
+        <ImageView
+            android:id="@+id/lastSign"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:srcCompat="@drawable/bottom_sheet_bg" />
+
+        <ImageView
+            android:id="@+id/lastSign2"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            tools:context="org.tensorflow.demo.CameraActivity" />
-    </RelativeLayout>
+            android:layout_height="wrap_content"
+            app:srcCompat="@drawable/bottom_sheet_bg" />
+
+        <ImageView
+            android:id="@+id/lastSign3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:srcCompat="@drawable/bottom_sheet_bg" />
+    </LinearLayout>
+
+    <FrameLayout
+            android:id="@+id/container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            tools:context="org.tensorflow.demo.CameraActivity">
+        </FrameLayout>
 
     <include
         android:id="@+id/bottom_sheet_layout"
         layout="@layout/tfe_od_layout_bottom_sheet" />
+
+
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

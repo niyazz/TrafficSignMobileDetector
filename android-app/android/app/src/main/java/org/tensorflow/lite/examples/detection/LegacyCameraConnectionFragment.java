@@ -85,7 +85,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
                 CameraConnectionFragment.chooseOptimalSize(
                     sizes, desiredSize.getWidth(), desiredSize.getHeight());
             parameters.setPreviewSize(previewSize.getWidth(), previewSize.getHeight());
-            camera.setDisplayOrientation(0); // todo 90 https://stackoverflow.com/questions/56849215/tensorflow-lite-android-for-object-detection-in-landscape-orientation
+            //camera.setDisplayOrientation(90); // todo uncomment https://stackoverflow.com/questions/56849215/tensorflow-lite-android-for-object-detection-in-landscape-orientation
             camera.setParameters(parameters);
             camera.setPreviewTexture(texture);
           } catch (IOException exception) {
@@ -94,10 +94,11 @@ public class LegacyCameraConnectionFragment extends Fragment {
 
           camera.setPreviewCallbackWithBuffer(imageListener);
           Camera.Size s = camera.getParameters().getPreviewSize();
-          // todo camera.addCallbackBuffer(new byte[ImageUtils.getYUVByteSize(s.height, s.width)]);
-          // todo textureView.setAspectRatio(s.height, s.width);
-          camera.addCallbackBuffer(new byte[ImageUtils.getYUVByteSize(s.width, s.height)]);
-          textureView.setAspectRatio(s.width, s.height);
+          //todo uncomment camera.addCallbackBuffer(new byte[ImageUtils.getYUVByteSize(s.height, s.width)]);
+          //todo uncomment  textureView.setAspectRatio(s.height, s.width);
+
+          camera.addCallbackBuffer(new byte[ImageUtils.getYUVByteSize(s.width, s.height)]); //todo delete
+          textureView.setAspectRatio(s.width, s.height);//todo delete
 
           camera.startPreview();
         }

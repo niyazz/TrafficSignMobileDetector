@@ -19,22 +19,26 @@ package org.tensorflow.lite.examples.detection;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Matrix;
-import android.graphics.Paint;
-import android.graphics.Paint.Style;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.SystemClock;
-import android.util.Log;
+import android.speech.tts.TextToSpeech;
 import android.util.Size;
 import android.util.TypedValue;
+import android.widget.ImageView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 
 import org.tensorflow.lite.examples.detection.customview.OverlayView;
 import org.tensorflow.lite.examples.detection.customview.OverlayView.DrawCallback;
@@ -50,14 +54,14 @@ import org.tensorflow.lite.examples.detection.tracking.MultiBoxTracker;
  * An activity that uses a TensorFlowMultiBoxDetector and ObjectTracker to detect and then track
  * objects.
  */
-public class DetectorActivity extends CameraActivity implements OnImageAvailableListener {
+public class DetectorActivity extends CameraActivity implements OnImageAvailableListener, TextToSpeech.OnInitListener {
     private static final Logger LOGGER = new Logger();
 
     private static final DetectorMode MODE = DetectorMode.TF_OD_API;
-    private static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.3f;
+    private static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.45f;
     private static final boolean MAINTAIN_ASPECT = true;
-    private static final Size DESIRED_PREVIEW_SIZE = new Size(1240, 640);
-    private static final boolean SAVE_PREVIEW_BITMAP = false;
+    private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 640);
+    private static final boolean SHOW_LAST_IMAGE_AT_DISPLAY = true;
     private static final float TEXT_SIZE_DIP = 10;
     OverlayView trackingOverlay;
     private Integer sensorOrientation;
@@ -65,7 +69,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     private YoloV5Classifier detector;
 
     private long lastProcessingTimeMs;
-    private Bitmap rgbFrameBitmap = null;
+    private Bitmap fullVideoFrameBitmap = null;
     private Bitmap croppedBitmap = null;
     private Bitmap cropCopyBitmap = null;
 
@@ -80,8 +84,27 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     private BorderedText borderedText;
 
+    private TextToSpeech tts;
+    ImageView[] lastSignsImages;
+    HashSet<String> lastSignsClasses;
+    Bitmap lastSignBitmap = null;
+    String lastSignClass = null;
+
     @Override
     public void onPreviewSizeChosen(final Size size, final int rotation) {
+        tts = new TextToSpeech(this, this);
+        lastSignsImages = new ImageView[] {
+                findViewById(R.id.lastSign),
+                findViewById(R.id.lastSign2),
+                findViewById(R.id.lastSign3)
+        };
+
+        lastSignsClasses = new HashSet<>();
+
+        for (int i=0; i<lastSignsImages.length; i++){
+            lastSignsImages[i].setImageDrawable(null);
+        }
+
         final float textSizePx =
                 TypedValue.applyDimension(
                         TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
@@ -114,7 +137,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         LOGGER.i("Camera orientation relative to screen canvas: %d", sensorOrientation);
 
         LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
-        rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
+        fullVideoFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
         croppedBitmap = Bitmap.createBitmap(cropSize, cropSize, Config.ARGB_8888);
 
         frameToCropTransform =
@@ -125,19 +148,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
         cropToFrameTransform = new Matrix();
         frameToCropTransform.invert(cropToFrameTransform);
-
         trackingOverlay = (OverlayView) findViewById(R.id.tracking_overlay);
-        trackingOverlay.addCallback(
-                new DrawCallback() {
-                    @Override
-                    public void drawCallback(final Canvas canvas) {
-                        tracker.draw(canvas);
-                        if (isDebug()) {
-                            tracker.drawDebug(canvas);
-                        }
-                    }
-                });
-
+        trackingOverlay.addCallback(canvas -> {tracker.draw(canvas, tts);});
         tracker.setFrameConfiguration(previewWidth, previewHeight, sensorOrientation);
     }
 
@@ -188,7 +200,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                 finish();
             }
 
-
             if (device.equals("CPU")) {
                 detector.useCPU();
             } else if (device.equals("GPU")) {
@@ -218,80 +229,86 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         final long currTimestamp = timestamp;
         trackingOverlay.postInvalidate();
 
-        // No mutex needed as this method is not reentrant.
         if (computingDetection) {
             readyForNextImage();
             return;
         }
+
         computingDetection = true;
         LOGGER.i("Preparing image " + currTimestamp + " for detection in bg thread.");
-
-        rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
-
+        fullVideoFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
         readyForNextImage();
-
         final Canvas canvas = new Canvas(croppedBitmap);
-        canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
-        // For examining the actual TF input.
-        if (SAVE_PREVIEW_BITMAP) {
-            ImageUtils.saveBitmap(croppedBitmap);
-        }
+        canvas.drawBitmap(fullVideoFrameBitmap, frameToCropTransform, null);
 
         runInBackground(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        LOGGER.i("Running detection on image " + currTimestamp);
-                        final long startTime = SystemClock.uptimeMillis();
-                        final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
-                        lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-
-                        Log.e("CHECK", "run: " + results.size());
-
-                        cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-                        final Canvas canvas = new Canvas(cropCopyBitmap);
-                        final Paint paint = new Paint();
-                        paint.setColor(Color.RED);
-                        paint.setStyle(Style.STROKE);
-                        paint.setStrokeWidth(2.0f);
-
-                        float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-                        switch (MODE) {
-                            case TF_OD_API:
-                                minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-                                break;
-                        }
-
-                        final List<Classifier.Recognition> mappedRecognitions =
-                                new LinkedList<Classifier.Recognition>();
-
-                        for (final Classifier.Recognition result : results) {
-                            final RectF location = result.getLocation();
-                            if (location != null && result.getConfidence() >= minimumConfidence) {
-                                canvas.drawRect(location, paint);
-
-                                cropToFrameTransform.mapRect(location);
-
-                                result.setLocation(location);
-                                mappedRecognitions.add(result);
-                            }
-                        }
-
-                        tracker.trackResults(mappedRecognitions, currTimestamp);
-                        trackingOverlay.postInvalidate();
-
-                        computingDetection = false;
-
-                        runOnUiThread(
-                                new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        showFrameInfo(previewWidth + "x" + previewHeight);
-                                        showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
-                                        showInference(lastProcessingTimeMs + "ms");
-                                    }
-                                });
+                () -> {
+                    LOGGER.i("Running detection on image " + currTimestamp);
+                    final long startTime = SystemClock.uptimeMillis();
+                    final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
+                    lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+                    cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                    float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                    float minimumConfidenceToShowAtDisplay = minimumConfidence;//0.65f;
+                    float lastSignImageMultiplier = 2.6f;
+                    switch (MODE) {
+                        case TF_OD_API:
+                            minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                            break;
                     }
+                    final List<Classifier.Recognition> mappedRecognitions = new LinkedList<>();
+                    for (final Classifier.Recognition result : results) {
+                        final RectF location = result.getLocation();
+                        if (location != null && result.getConfidence() >= minimumConfidence) {
+                            cropToFrameTransform.mapRect(location);
+                            if(location.left < location.left + location.width() && location.top < location.top + location.height()) {
+                                if(result.getConfidence() > minimumConfidenceToShowAtDisplay){
+                                    lastSignBitmap = Bitmap.createBitmap(fullVideoFrameBitmap,
+                                            (int) location.left, (int) location.top,
+                                            (int) location.width(), (int) location.height());
+                                    lastSignBitmap = Bitmap.createScaledBitmap(lastSignBitmap,
+                                            (int)(lastSignBitmap.getWidth() * lastSignImageMultiplier),
+                                            (int)(lastSignBitmap.getHeight() * lastSignImageMultiplier), false);
+                                    lastSignClass = result.getTitle().trim();
+                                }
+                            }
+                            result.setLocation(location);
+                            mappedRecognitions.add(result);
+                        }
+                    }
+
+                    tracker.trackResults(mappedRecognitions);
+                    trackingOverlay.postInvalidate();
+                    computingDetection = false;
+
+                    runOnUiThread(
+                            () -> {
+                                if (SHOW_LAST_IMAGE_AT_DISPLAY) {
+                                    LOGGER.e("LAST "+ lastSignClass);
+                                    for(int i = 0; i < lastSignsImages.length; i++){
+
+                                        if(i == lastSignsImages.length - 1){
+                                            for(int j = 0; j < lastSignsImages.length; j++){
+                                                lastSignsClasses.clear();
+                                                lastSignsImages[j].setImageBitmap(null);
+                                            }
+                                        }
+
+                                        if(lastSignsClasses.contains(lastSignClass)){
+                                            break;
+                                        }
+
+                                        if(!hasImage(lastSignsImages[i])){
+                                            lastSignsClasses.add(lastSignClass);
+                                            lastSignsImages[i].setImageBitmap(lastSignBitmap);
+                                            break;
+                                        }
+                                    }
+                                }
+                                showFrameInfo(previewWidth + "x" + previewHeight);
+                                showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
+                                showInference(lastProcessingTimeMs + "ms");
+                            });
                 });
     }
 
@@ -303,6 +320,29 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     @Override
     protected Size getDesiredPreviewFrameSize() {
         return DESIRED_PREVIEW_SIZE;
+    }
+
+    private boolean hasImage(@NonNull ImageView view) {
+        Drawable drawable = view.getDrawable();
+        boolean hasImage = (drawable != null);
+
+        if (hasImage && (drawable instanceof BitmapDrawable)) {
+            hasImage = ((BitmapDrawable)drawable).getBitmap() != null;
+        }
+
+        return hasImage;
+    }
+
+    @Override
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            int result = tts.setLanguage(new Locale("ru"));
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Toast.makeText(DetectorActivity.this, "Language not supported", Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            Toast.makeText(DetectorActivity.this, "Initialization failed", Toast.LENGTH_SHORT).show();
+        }
     }
 
     // Which detection model to use: by default uses Tensorflow Object Detection API frozen
@@ -319,5 +359,14 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     @Override
     protected void setNumThreads(final int numThreads) {
         runInBackground(() -> detector.setNumThreads(numThreads));
+    }
+
+    @Override
+    public void onDestroy() {
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+        }
+        super.onDestroy();
     }
 }
